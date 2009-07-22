@@ -1,8 +1,6 @@
 package org.arabidopsis.ahocorasick;
 
 
-import gnu.trove.TIntHashSet;
-
 /**
    <p>Holds the result of the search so far.  Includes the outputs where
    the search finished as well as the last index of the matching.</p>
@@ -25,7 +23,7 @@ public class SearchResult {
     /**
        Returns a list of the outputs of this match.
      */
-    public TIntHashSet getOutputs() {
+    public int[] getOutputs() {
 	return lastMatchedState.getOutputs();
     }
 

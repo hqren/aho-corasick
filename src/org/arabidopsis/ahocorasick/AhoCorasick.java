@@ -1,7 +1,6 @@
 package org.arabidopsis.ahocorasick;
 
 import java.util.Iterator;
-import gnu.trove.TIntIterator;
 
 /**
    <p>An implementation of the Aho-Corasick string searching
@@ -114,10 +113,7 @@ public class AhoCorasick {
 		    r = r.getFail();
 		s.setFail(r.get(a));
 
-    TIntIterator iterator = r.get(a).getOutputs().iterator();
-    while(iterator.hasNext()){
-      s.getOutputs().add(iterator.next());
-    }
+    s.addAllOutputs(r.get(a));
 
 
 	    }
@@ -171,7 +167,7 @@ public class AhoCorasick {
 	    while (state.get(b) == null)
 		state = state.getFail();
 	    state = state.get(b);
-	    if (state.getOutputs().size() > 0)
+	    if (state.getOutputs().length > 0)
 		return new SearchResult(state, bytes, i+1);
 	}
 	return null;

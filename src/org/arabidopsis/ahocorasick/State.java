@@ -1,43 +1,18 @@
 package org.arabidopsis.ahocorasick;
 
-import gnu.trove.TIntHashSet;
-
-
 /**
    A state represents an element in the Aho-Corasick tree.
  */
 
 
 class State {
-
-
-    // Arbitrarily chosen constant.  If this state ends up getting
-    // deeper than THRESHOLD_TO_USE_SPARSE, then we switch over to a
-    // sparse edge representation.  I did a few tests, and there's a
-    // local minima here.  We may want to choose a more sophisticated
-    // strategy.
-    private static final int THRESHOLD_TO_USE_SPARSE = 3;
-
-    private TinyByteMap<State> edgeList;
     private State fail;
-    private TIntHashSet outputs;
-
-    public State() {
-    }
-
-    TinyByteMap<State> getEdgeList(){
-      if(this.edgeList == null)
-        this.edgeList = new TinyByteMap();
-
-      return edgeList;
-    }
-
 
     public State extend(byte b) {
-	if (this.getEdgeList().get(b) != null)
-	    return this.getEdgeList().get(b);
+	if (get(b) != null)
+	    return get(b);
 	State nextState = new State();
-	this.getEdgeList().put(b, nextState);
+	this.put(b, nextState);
 	return nextState;
     }
 
@@ -45,8 +20,8 @@ class State {
     public State extendAll(byte[] bytes) {
 	State state = this;
 	for (int i = 0; i < bytes.length; i++) {
-	    if (state.getEdgeList().get(bytes[i]) != null)
-		state = state.getEdgeList().get(bytes[i]);
+	    if (state.get(bytes[i]) != null)
+		state = state.get(bytes[i]);
 	    else
 		state = state.extend(bytes[i]);
 	}
@@ -63,23 +38,8 @@ class State {
 	byte[] keys = keys();
 	int result = 1;
 	for (int i = 0; i < keys.length; i++)
-	    result += getEdgeList().get(keys[i]).size();
+	    result += get(keys[i]).size();
 	return result;
-    }
-
-
-    public State get(byte b) {
-	return this.getEdgeList().get(b);
-    }
-
-
-    public void put(byte b, State s) {
-	this.getEdgeList().put(b, s);
-    }
-
-    public byte[] keys() {
-      if(edgeList == null) return TinyByteMap.EMPTY; 
-      else return this.getEdgeList().keys();
     }
 
 
@@ -93,15 +53,127 @@ class State {
     }
 
 
-    public void addOutput(int o) {
-	this.getOutputs().add(o);
+  // BEGIN STATE MAP
+  // This is basically an inlined map of bytes to states. 
+  // It is very hacky because it is designed to use absolutely 
+  // as little space as possible. There be great evil here. 
+
+  static final byte[] EMPTY_BYTES = new byte[0];
+
+  // Oh what a hack
+  // if the map has size 0 keys is null, states is null
+  // if the map has size 1 keys is a Byte, states is a T
+  // else keys is byte[] and states is an Object[] of the same size
+  // carrying the bytes in parallel
+  private Object keys;
+  private Object states;
+
+  public State get(byte key){
+    if(keys == null) return null;
+    if(keys instanceof Byte){      
+      return ((Byte)keys).byteValue() == key ? (State)states : null; 
+    }
+    byte[] keys = (byte[])this.keys;
+    for(int i = 0; i < keys.length; i++){
+      if(keys[i] == key) return (State)((Object[])states)[i];
+    }
+    return null; 
+  }
+
+  public void put(byte key, State value){
+    if(keys == null){
+      keys = key;
+      states = value;
+      return;
     }
 
-
-    public TIntHashSet getOutputs() {
-      if(this.outputs == null){
-        this.outputs = new TIntHashSet(1);
+    if(keys instanceof Byte){
+      if(((Byte)keys).byteValue() == key){
+        states = value;
+      } else {
+        keys = new byte[]{((Byte)keys).byteValue(), key};
+        states = new Object[]{states, value};
       }
-	return this.outputs;
+      return;
     }
+
+    byte[] keys = (byte[])this.keys;
+    Object[] states = (Object[])this.states;
+
+    for(int i = 0; i < keys.length; i++){
+      if(keys[i] == key){
+        states[i] = value;
+        return;
+      }
+    }
+
+    byte[] newkeys = new byte[keys.length + 1];
+    for(int i = 0; i < keys.length; i++){
+      newkeys[i] = keys[i]; 
+    }
+    newkeys[newkeys.length - 1] = key;
+   
+    Object[] newstates = new Object[states.length + 1];
+    for(int i = 0; i < states.length; i++){
+      newstates[i] = states[i]; 
+    }
+    newstates[newstates.length - 1] = value;
+
+    this.keys = newkeys;
+    this.states = newstates;
+  }
+
+  public byte[] keys(){
+    if(keys == null) return EMPTY_BYTES; 
+    if(keys instanceof Byte) return new byte[]{((Byte)keys).byteValue()};
+    return ((byte[])keys);
+  }
+  // END STATE MAP
+
+
+  // BEGIN OUTPUT SET
+  
+  // Same story. here's an inlined set of ints backed by an array of
+  // ints.
+
+  private static int[] EMPTY_INTS = new int[0];
+
+  // null when empty
+  // an Integer when size 1
+  // an int[] when size > 1
+  private Object outputs;
+
+  public void addAllOutputs(State that){
+    for(int j : that.getOutputs()) addOutput(j);
+  }
+
+  public void addOutput(int i){
+    if(outputs == null) outputs = i;  
+    else if(outputs instanceof Integer){
+      int j = ((Integer)outputs).intValue();
+      if(i != j){
+        outputs = new int[]{j, i};
+      }
+    } else {
+      int[] outputs = (int[])this.outputs;
+      for(int v : outputs){
+        if(v == i) return;
+      }
+      int[] newoutputs = new int[outputs.length + 1];
+      System.arraycopy(outputs, 0, newoutputs, 0, outputs.length);
+      newoutputs[newoutputs.length - 1] = i;
+      this.outputs = newoutputs;
+    }
+  }
+
+  public int[] getOutputs(){
+    if(outputs == null) return EMPTY_INTS;
+    else if(outputs instanceof Integer) return new int[]{((Integer)outputs).intValue()};
+    else return (int[])outputs;
+  } 
+
+
+  // END OUTPUT SET
+
+
 }
